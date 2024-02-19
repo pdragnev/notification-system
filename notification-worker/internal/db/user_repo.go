@@ -15,7 +15,7 @@ func NewUserRepository(pool *pgxpool.Pool) *PgxUserRepository {
 	return &PgxUserRepository{Pool: pool}
 }
 
-func (repo *PgxUserRepository) GetUserEmailsByIds(userIds []string) ([]string, error) {
+func (repo *PgxUserRepository) GetUserEmailsByIds(ctx context.Context, userIds []string) ([]string, error) {
 	ids := make([]interface{}, len(userIds))
 	for i, id := range userIds {
 		ids[i] = id
@@ -25,7 +25,7 @@ func (repo *PgxUserRepository) GetUserEmailsByIds(userIds []string) ([]string, e
         SELECT email FROM users WHERE id = ANY($1);
     `
 
-	rows, err := repo.Pool.Query(context.Background(), getEmailsSQL, ids)
+	rows, err := repo.Pool.Query(ctx, getEmailsSQL, ids)
 	if err != nil {
 		return nil, fmt.Errorf("error querying user emails: %w", err)
 	}

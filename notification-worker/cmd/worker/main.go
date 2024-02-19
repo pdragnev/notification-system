@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/pdragnev/notification-system/notification-worker/internal/db"
 	"github.com/pdragnev/notification-system/notification-worker/internal/queue"
@@ -13,38 +15,52 @@ import (
 )
 
 func main() {
-	//Connection to DB
-	pool, err := db.Connect()
+	pool, err := db.Connect(context.Background())
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
+
 	defer pool.Close()
 
 	userRepository := db.NewUserRepository(pool)
 
 	//Connection to RabbitMQ
-	rabbitMQClient := queue.NewRabbitMQClient()
-	defer rabbitMQClient.Connection.Close()
+	rabbitMQConfig := queue.RabbitMQConfig{
+		URL:               os.Getenv("RABBITMQ_URL"),
+		NotificationQueue: os.Getenv("RABBITMQ_NOTIFICATION_QUEUE_NAME"),
+	}
+	rabbitMQClient, err := queue.NewRabbitMQClient(rabbitMQConfig)
+	if err != nil {
+		log.Fatalf("Failed to initialize RabbitMQ client: %v", err)
+	}
+	defer func() {
+		if err := rabbitMQClient.Connection.Close(); err != nil {
+			log.Printf("Failed to close RabbitMQ connection: %v", err)
+		}
+	}()
 
 	notificationWorker := workers.NewNotificationWorker(rabbitMQClient, userRepository)
 
-	// Setup channel to listen for interrupt or terminate signals
-	stopChan := make(chan os.Signal, 1)
-	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	// Start your worker
 	go func() {
 		log.Println("Worker started. Press Ctrl+C to stop.")
 		notificationWorker.Start()
 	}()
 
-	// Wait for interrupt or terminate signal
-	<-stopChan
-	log.Println("Shutdown signal received, exiting...")
+	<-ctx.Done()
+	log.Println("Shutdown signal received, initiating graceful shutdown...")
 
-	// Attempt a graceful shutdown
-	_, cancel := context.WithTimeout(context.Background(), 10)
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: nil,
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	}
 
 	log.Println("Worker shutdown gracefully")
 }

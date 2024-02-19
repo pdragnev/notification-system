@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/pdragnev/notification-system/common"
 	"github.com/pdragnev/notification-system/notification-worker/internal/db"
@@ -14,7 +15,15 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
-const MaxRetryCount = 3
+var maxRetryCount int
+
+func init() {
+	var err error
+	maxRetryCount, err = strconv.Atoi(os.Getenv("MAX_RETRY_COUNT"))
+	if err != nil {
+		maxRetryCount = 3
+	}
+}
 
 type NotificationWorker struct {
 	QueueClient *queue.RabbitMQClient
@@ -38,7 +47,7 @@ func (worker *NotificationWorker) ProcessMessage(message []byte) error {
 	}
 
 	// Check if retry count has exceeded max retries
-	if notificationMsg.RetryCount >= MaxRetryCount {
+	if notificationMsg.RetryCount >= maxRetryCount {
 		strErr := fmt.Sprintf("Max retries exceeded for message: %v", notificationMsg)
 		log.Print(strErr)
 		return models.NewMaxRetryError(strErr)
@@ -69,5 +78,5 @@ func (worker *NotificationWorker) Start() {
 		return worker.ProcessMessage(d.Body)
 	}
 
-	worker.QueueClient.StartConsuming(os.Getenv("RABBITMQ_NOTIFICATION_QUEUE_NAME"), handler)
+	worker.QueueClient.StartConsuming(handler)
 }

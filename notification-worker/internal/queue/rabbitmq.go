@@ -23,21 +23,35 @@ func init() {
 	}
 }
 
-type RabbitMQClient struct {
-	Connection *amqp091.Connection
+type RabbitMQConfig struct {
+	URL               string
+	NotificationQueue string
 }
 
-func NewRabbitMQClient() *RabbitMQClient {
-	conn, err := amqp091.Dial(os.Getenv("RABBITMQ_URL"))
+type RabbitMQClient struct {
+	Connection *amqp091.Connection
+	config     *RabbitMQConfig
+}
+
+func NewRabbitMQClient(config RabbitMQConfig) (*RabbitMQClient, error) {
+	if config.URL == "" {
+		return nil, fmt.Errorf("RabbitMQ URL must not be empty")
+	}
+	if config.NotificationQueue == "" {
+		return nil, fmt.Errorf("NotificationQueue name must not be empty")
+	}
+
+	conn, err := amqp091.Dial(config.URL)
 	if err != nil {
-		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
+		return nil, fmt.Errorf("failed to connect to RabbitMQ: %v", err)
 	}
 	return &RabbitMQClient{
 		Connection: conn,
-	}
+		config:     &config,
+	}, nil
 }
 
-func (client *RabbitMQClient) StartConsuming(queueName string, handler func(amqp091.Delivery) error) {
+func (client *RabbitMQClient) StartConsuming(handler func(amqp091.Delivery) error) {
 	ch, err := client.Connection.Channel()
 	if err != nil {
 		log.Fatalf("Failed to open a channel: %v", err)
@@ -45,7 +59,7 @@ func (client *RabbitMQClient) StartConsuming(queueName string, handler func(amqp
 	defer ch.Close()
 
 	msgs, err := ch.Consume(
-		queueName,
+		client.config.NotificationQueue,
 		"",
 		false, // we manually ack/nack
 		false,
@@ -75,7 +89,7 @@ func (client *RabbitMQClient) StartConsuming(queueName string, handler func(amqp
 		go func(d amqp091.Delivery) {
 			defer func() { <-sem }()
 			if err := handler(d); err != nil {
-				client.handleProcessingError(err, d, queueName)
+				client.handleProcessingError(err, d)
 			} else {
 				d.Ack(false)
 			}
@@ -83,11 +97,11 @@ func (client *RabbitMQClient) StartConsuming(queueName string, handler func(amqp
 	}
 }
 
-func (client *RabbitMQClient) handleProcessingError(err error, d amqp091.Delivery, queueName string) {
+func (client *RabbitMQClient) handleProcessingError(err error, d amqp091.Delivery) {
 	switch e := err.(type) {
 	case *models.RetryError:
 		updatedMessageBytes, _ := json.Marshal(e.UpdatedMessage)
-		if requeueErr := client.requeueMessage(queueName, updatedMessageBytes); requeueErr != nil {
+		if requeueErr := client.requeueMessage(updatedMessageBytes); requeueErr != nil {
 			log.Printf("Failed to requeue message: %v", requeueErr)
 		}
 		d.Ack(false)
@@ -98,7 +112,7 @@ func (client *RabbitMQClient) handleProcessingError(err error, d amqp091.Deliver
 	}
 }
 
-func (client *RabbitMQClient) requeueMessage(queueName string, updatedMessage []byte) error {
+func (client *RabbitMQClient) requeueMessage(updatedMessage []byte) error {
 	ch, err := client.Connection.Channel()
 	if err != nil {
 		return fmt.Errorf("failed to open a channel: %v", err)
@@ -109,10 +123,10 @@ func (client *RabbitMQClient) requeueMessage(queueName string, updatedMessage []
 	defer cancel()
 	err = ch.PublishWithContext(
 		ctx,
-		"",        // exchange
-		queueName, // routing key (queue name)
-		false,     // mandatory
-		false,     // immediate
+		"",                              // exchange
+		client.config.NotificationQueue, // routing key (queue name)
+		false,                           // mandatory
+		false,                           // immediate
 		amqp091.Publishing{
 			DeliveryMode: amqp091.Persistent,
 			Timestamp:    time.Now(),

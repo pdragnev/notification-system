@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,7 +26,7 @@ func NewEmailProcessor(userRepo db.UserRepository) *EmailProcessor {
 
 func (p *EmailProcessor) Process(notificationMsg common.NotificationMessage) error {
 	notification := notificationMsg.Notification
-	userEmails, err := p.UserRepo.GetUserEmailsByIds(notification.To)
+	userEmails, err := p.UserRepo.GetUserEmailsByIds(context.Background(), notification.To)
 	if err != nil || len(userEmails) == 0 {
 		return fmt.Errorf("failed to fetch user emails: %v", err)
 	}

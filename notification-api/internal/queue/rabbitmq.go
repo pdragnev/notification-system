@@ -11,22 +11,18 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
+type RabbitMQConfig struct {
+	URL               string
+	DLXExchange       string
+	DLXQueue          string
+	NotificationQueue string
+}
+
 func init() {
 	if os.Getenv("APP_ENV") == "development" {
 		if err := godotenv.Load(); err != nil {
 			log.Println("No .env file found")
 		}
-	}
-
-	client, err := NewRabbitMQClient()
-	if err != nil {
-		log.Fatalf("Failed to initialize RabbitMQ client: %v", err)
-	}
-	defer client.Connection.Close()
-
-	// Setup queues and exchanges
-	if err := client.setupQueues(); err != nil {
-		log.Fatalf("Failed to setup RabbitMQ queues: %v", err)
 	}
 }
 
@@ -34,8 +30,8 @@ type RabbitMQClient struct {
 	Connection *amqp091.Connection
 }
 
-func NewRabbitMQClient() (*RabbitMQClient, error) {
-	conn, err := amqp091.Dial(os.Getenv("RABBITMQ_URL"))
+func NewRabbitMQClient(config RabbitMQConfig) (*RabbitMQClient, error) {
+	conn, err := amqp091.Dial(config.URL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %v", err)
 	}
@@ -67,14 +63,13 @@ func (client *RabbitMQClient) PublishMessage(queueName string, message []byte) e
 	return err
 }
 
-func (client *RabbitMQClient) setupQueues() error {
+func (client *RabbitMQClient) SetupQueues() error {
 	ch, err := client.Connection.Channel()
 	if err != nil {
 		return err
 	}
 	defer ch.Close()
 
-	// DLX and DLQ names
 	dlxName := os.Getenv("DLX_EXCHANGE_NAME")
 	dlqName := os.Getenv("DLX_QUEUE_NAME")
 	primaryQueueName := os.Getenv("RABBITMQ_NOTIFICATION_QUEUE_NAME")
@@ -93,7 +88,6 @@ func (client *RabbitMQClient) setupQueues() error {
 		return fmt.Errorf("failed to declare DLX: %v", err)
 	}
 
-	// Ensure DLQ exists and is bound to the DLX
 	_, err = ch.QueueDeclare(
 		dlqName,
 		true,

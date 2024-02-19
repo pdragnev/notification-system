@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 
@@ -18,10 +19,27 @@ func init() {
 }
 
 type UserRepository interface {
-	GetUserEmailsByIds(userIds []string) ([]string, error)
+	GetUserEmailsByIds(ctx context.Context, userIds []string) ([]string, error)
 }
 
-func Connect() (*pgxpool.Pool, error) {
-	databaseUrl := os.Getenv("DATABASE_URL")
-	return pgxpool.Connect(context.Background(), databaseUrl)
+func Connect(ctx context.Context) (*pgxpool.Pool, error) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL is not set")
+	}
+
+	poolConfig, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing DATABASE_URL: %w", err)
+	}
+
+	poolConfig.MaxConns = 10
+	poolConfig.MinConns = 2
+
+	pool, err := pgxpool.ConnectConfig(ctx, poolConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	return pool, nil
 }
