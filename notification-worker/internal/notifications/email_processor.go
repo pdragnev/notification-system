@@ -10,6 +10,7 @@ import (
 
 	"github.com/pdragnev/notification-system/common"
 	"github.com/pdragnev/notification-system/notification-worker/internal/db"
+	"github.com/pdragnev/notification-system/notification-worker/internal/models"
 )
 
 type EmailProcessor struct {
@@ -25,7 +26,7 @@ func NewEmailProcessor(userRepo db.UserRepository) *EmailProcessor {
 func (p *EmailProcessor) Process(notificationMsg common.NotificationMessage) error {
 	notification := notificationMsg.Notification
 	userEmails, err := p.UserRepo.GetUserEmailsByIds(notification.To)
-	if err != nil {
+	if err != nil || len(userEmails) == 0 {
 		return fmt.Errorf("failed to fetch user emails: %v", err)
 	}
 
@@ -51,8 +52,25 @@ func (p *EmailProcessor) Process(notificationMsg common.NotificationMessage) err
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response body: %v", err)
+	}
+
+	var response []models.MailchimpEmailResponse
+
+	err = json.Unmarshal(bodyBytes, &response)
+	if err != nil {
+		return fmt.Errorf("error parsing response JSON: %v", err)
+	}
+
+	// Check the response for any rejected or invalid statuses
+	for _, item := range response {
+		if item.Status == "rejected" || item.Status == "invalid" {
+			return fmt.Errorf("email sending failed: %s, reason: %s, id: %s", item.Status, item.RejectReason, item.ID)
+		}
+	}
 	if resp.StatusCode >= 300 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("email sending failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 

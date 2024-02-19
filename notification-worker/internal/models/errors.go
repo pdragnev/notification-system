@@ -45,3 +45,17 @@ func NewProcessingTypeError(msg string) error {
 		Msg: msg,
 	}
 }
+
+type MaxRetryError struct {
+	Msg string
+}
+
+func (e *MaxRetryError) Error() string {
+	return e.Msg
+}
+
+func NewMaxRetryError(msg string) error {
+	return &MaxRetryError{
+		Msg: msg,
+	}
+}

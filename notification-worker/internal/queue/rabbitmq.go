@@ -75,23 +75,26 @@ func (client *RabbitMQClient) StartConsuming(queueName string, handler func(amqp
 		go func(d amqp091.Delivery) {
 			defer func() { <-sem }()
 			if err := handler(d); err != nil {
-				switch e := err.(type) {
-				case *models.RetryError:
-					updatedMessageBytes, _ := json.Marshal(e.UpdatedMessage)
-					if requeueErr := client.requeueMessage(queueName, updatedMessageBytes); requeueErr != nil {
-						log.Printf("Failed to requeue message: %v", requeueErr)
-					}
-					d.Ack(false)
-				case *models.DeserializingMsgError, *models.ProcessingTypeError:
-					d.Nack(false, false) // Non-recoverable error, send to DLQ
-				default:
-					log.Printf("Error processing message: %v", err)
-					d.Nack(false, true) // Temporary error, requeue the message
-				}
+				client.handleProcessingError(err, d, queueName)
 			} else {
 				d.Ack(false)
 			}
 		}(d)
+	}
+}
+
+func (client *RabbitMQClient) handleProcessingError(err error, d amqp091.Delivery, queueName string) {
+	switch e := err.(type) {
+	case *models.RetryError:
+		updatedMessageBytes, _ := json.Marshal(e.UpdatedMessage)
+		if requeueErr := client.requeueMessage(queueName, updatedMessageBytes); requeueErr != nil {
+			log.Printf("Failed to requeue message: %v", requeueErr)
+		}
+		d.Ack(false)
+	case *models.DeserializingMsgError, *models.ProcessingTypeError, *models.MaxRetryError:
+		d.Nack(false, false) // Send to DLQ
+	default:
+		d.Nack(false, true) // Requeue for temporary issues
 	}
 }
 

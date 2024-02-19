@@ -82,7 +82,7 @@ func (client *RabbitMQClient) setupQueues() error {
 	// Ensure DLX exists
 	err = ch.ExchangeDeclare(
 		dlxName,
-		"direct",
+		"fanout",
 		true,
 		false,
 		false,

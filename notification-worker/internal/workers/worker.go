@@ -14,6 +14,8 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
+const MaxRetryCount = 3
+
 type NotificationWorker struct {
 	QueueClient *queue.RabbitMQClient
 	UserRepo    db.UserRepository
@@ -36,9 +38,10 @@ func (worker *NotificationWorker) ProcessMessage(message []byte) error {
 	}
 
 	// Check if retry count has exceeded max retries
-	if notificationMsg.RetryCount >= 5 {
-		log.Printf("Max retries exceeded for message: %v", notificationMsg)
-		return nil
+	if notificationMsg.RetryCount >= MaxRetryCount {
+		strErr := fmt.Sprintf("Max retries exceeded for message: %v", notificationMsg)
+		log.Print(strErr)
+		return models.NewMaxRetryError(strErr)
 	}
 
 	notification := notificationMsg.Notification
