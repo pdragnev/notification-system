@@ -19,9 +19,8 @@ func GetProcessorForType(notificationType string, userRepo db.UserRepository) (P
 	switch notificationType {
 	case "email":
 		return NewEmailProcessor(userRepo), nil
-	//case "sms":
-	//	return NewSmsProcessor(), nil
-	// add more cases as needed
+	case "sms":
+		return NewSmsProcessor(userRepo), nil
 	default:
 		return nil, fmt.Errorf("unknown notification type: %s", notificationType)
 	}

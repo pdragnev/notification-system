@@ -46,3 +46,35 @@ func (repo *PgxUserRepository) GetUserEmailsByIds(ctx context.Context, userIds [
 
 	return emails, nil
 }
+
+func (repo *PgxUserRepository) GetUserPhonesByIds(ctx context.Context, userIds []string) ([]string, error) {
+	ids := make([]interface{}, len(userIds))
+	for i, id := range userIds {
+		ids[i] = id
+	}
+
+	const getPhoneNumberSQL = `
+        SELECT phone_number FROM users WHERE id = ANY($1);
+    `
+
+	rows, err := repo.Pool.Query(ctx, getPhoneNumberSQL, ids)
+	if err != nil {
+		return nil, fmt.Errorf("error querying user phoneNumber: %w", err)
+	}
+	defer rows.Close()
+
+	var phone_numbers []string
+	for rows.Next() {
+		var phone_number string
+		if err := rows.Scan(&phone_number); err != nil {
+			return nil, fmt.Errorf("error scanning phone numbers: %w", err)
+		}
+		phone_numbers = append(phone_numbers, phone_number)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return phone_numbers, nil
+}

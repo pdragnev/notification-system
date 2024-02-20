@@ -8,12 +8,13 @@ type NotificationType string
 
 const (
 	EmailNotificationType NotificationType = "email"
+	SmsNotificationType   NotificationType = "sms"
 	// more types
 )
 
 func IsValidType(t NotificationType) bool {
 	switch t {
-	case EmailNotificationType:
+	case EmailNotificationType, SmsNotificationType:
 		return true
 	default:
 		return false

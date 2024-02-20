@@ -63,12 +63,18 @@ func main() {
 
 	http.HandleFunc("/v1/notification", notificationHandler(notificationService))
 
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
 	srv := &http.Server{
 		Addr:    ":8080",
 		Handler: nil,
 	}
 
 	go func() {
+		log.Println("Starting on port 8080. Press Ctrl+C to stop.")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("ListenAndServe(): %v", err)
 		}

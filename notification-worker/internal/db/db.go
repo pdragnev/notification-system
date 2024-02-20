@@ -20,6 +20,7 @@ func init() {
 
 type UserRepository interface {
 	GetUserEmailsByIds(ctx context.Context, userIds []string) ([]string, error)
+	GetUserPhonesByIds(ctx context.Context, userIds []string) ([]string, error)
 }
 
 func Connect(ctx context.Context) (*pgxpool.Pool, error) {
